@@ -2323,6 +2323,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  }
 	else
 	  {
+		//指定接口禁止dhcp
 	    new->next = daemon->dhcp_except;
 	    daemon->dhcp_except = new;
 	  }

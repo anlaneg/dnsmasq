@@ -39,6 +39,7 @@ static struct dhcp_relay *relay_reply4(struct dhcp_packet *mess, char *arrival_i
 
 static int make_fd(int port)
 {
+  //创建udp　sokcet
   int fd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
   struct sockaddr_in saddr;
   int oneopt = 1;
@@ -49,6 +50,7 @@ static int make_fd(int port)
   int tos = IPTOS_CLASS_CS6;
 #endif
 
+  //创建socket失败，则退出
   if (fd == -1)
     die (_("cannot create DHCP socket: %s"), NULL, EC_BADNET);
   
@@ -77,11 +79,13 @@ static int make_fd(int port)
       int rc = 0;
 
 #ifdef SO_REUSEPORT
+      //设置reuse port
       if ((rc = setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &oneopt, sizeof(oneopt))) == -1 && 
 	  errno == ENOPROTOOPT)
 	rc = 0;
 #endif
       
+      //设置reuse addr
       if (rc != -1)
 	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &oneopt, sizeof(oneopt));
       
@@ -89,6 +93,7 @@ static int make_fd(int port)
 	die(_("failed to set SO_REUSE{ADDR|PORT} on DHCP socket: %s"), NULL, EC_BADNET);
     }
   
+  //绑定指定port
   memset(&saddr, 0, sizeof(saddr));
   saddr.sin_family = AF_INET;
   saddr.sin_port = htons(port);
@@ -109,8 +114,10 @@ void dhcp_init(void)
   int oneopt = 1;
 #endif
 
+  //构造dhcpfd,监听dhcp server port
   daemon->dhcpfd = make_fd(daemon->dhcp_server_port);
   if (daemon->enable_pxe)
+	//构造pxefd,监听pxe port
     daemon->pxefd = make_fd(PXE_PORT);
   else
     daemon->pxefd = -1;
@@ -133,11 +140,12 @@ void dhcp_init(void)
 
 void dhcp_packet(time_t now, int pxe_fd)
 {
+  /*要操作pxefd,还是dhcpfd*/
   int fd = pxe_fd ? daemon->pxefd : daemon->dhcpfd;
   struct dhcp_packet *mess;
   struct dhcp_context *context;
   struct dhcp_relay *relay;
-  int is_relay_reply = 0;
+  int is_relay_reply = 0;/*标记是否为relay的响应报文*/
   struct iname *tmp;
   struct ifreq ifr;
   struct msghdr msg;
@@ -145,7 +153,7 @@ void dhcp_packet(time_t now, int pxe_fd)
   struct cmsghdr *cmptr;
   struct iovec iov;
   ssize_t sz; 
-  int iface_index = 0, unicast_dest = 0, is_inform = 0, loopback = 0;
+  int iface_index = 0/*报文来自哪个接口*/, unicast_dest = 0/*是否为单播目的ip*/, is_inform = 0, loopback = 0;
   int rcvd_iface_index;
   struct in_addr iface_addr;
   struct iface_param parm;
@@ -174,11 +182,13 @@ void dhcp_packet(time_t now, int pxe_fd)
   msg.msg_iov = &daemon->dhcp_packet;
   msg.msg_iovlen = 1;
   
+  /*自fd中收取报文*/
   if ((sz = recv_dhcp_packet(fd, &msg)) == -1 || 
       (sz < (ssize_t)(sizeof(*mess) - sizeof(mess->options)))) 
     return;
     
   #if defined (HAVE_LINUX_NETWORK)
+  //取时间标签
   if (ioctl(fd, SIOCGSTAMP, &tv) == 0)
     recvtime = tv.tv_sec;
 
@@ -191,12 +201,13 @@ void dhcp_packet(time_t now, int pxe_fd)
 	    struct in_pktinfo *p;
 	  } p;
 	  p.c = CMSG_DATA(cmptr);
-	  iface_index = p.p->ipi_ifindex;
+	  iface_index = p.p->ipi_ifindex;/*获取报文自哪个接口来*/
 	  if (p.p->ipi_addr.s_addr != INADDR_BROADCAST)
-	    unicast_dest = 1;
+	    unicast_dest = 1;/*获取报文目的ip是否为广播地址*/
 	}
 
 #elif defined(HAVE_BSD_NETWORK) 
+  //bsd获取iface_index
   if (msg.msg_controllen >= sizeof(struct cmsghdr))
     for (cmptr = CMSG_FIRSTHDR(&msg); cmptr; cmptr = CMSG_NXTHDR(&msg, cmptr))
       if (cmptr->cmsg_level == IPPROTO_IP && cmptr->cmsg_type == IP_RECVIF)
@@ -210,6 +221,7 @@ void dhcp_packet(time_t now, int pxe_fd)
 	}
   
 #elif defined(HAVE_SOLARIS_NETWORK) 
+  //solaris获取iface_index
   if (msg.msg_controllen >= sizeof(struct cmsghdr))
     for (cmptr = CMSG_FIRSTHDR(&msg); cmptr; cmptr = CMSG_NXTHDR(&msg, cmptr))
       if (cmptr->cmsg_level == IPPROTO_IP && cmptr->cmsg_type == IP_RECVIF)
@@ -223,15 +235,18 @@ void dhcp_packet(time_t now, int pxe_fd)
 	}
 #endif
 	
+  //获取报文来源的接口名称
   if (!indextoname(daemon->dhcpfd, iface_index, ifr.ifr_name) ||
       ioctl(daemon->dhcpfd, SIOCGIFFLAGS, &ifr) != 0)
     return;
   
+  //获取接收到的报文
   mess = (struct dhcp_packet *)daemon->dhcp_packet.iov_base;
   loopback = !mess->giaddr.s_addr && (ifr.ifr_flags & IFF_LOOPBACK);
   
 #ifdef HAVE_LINUX_NETWORK
   /* ARP fiddling uses original interface even if we pretend to use a different one. */
+  //填充向自哪个dev向外发送arp请求
   safe_strncpy(arp_req.arp_dev, ifr.ifr_name, sizeof(arp_req.arp_dev));
 #endif 
 
@@ -276,7 +291,7 @@ void dhcp_packet(time_t now, int pxe_fd)
       rcvd_iface_index = relay->iface_index;
       if (!indextoname(daemon->dhcpfd, rcvd_iface_index, ifr.ifr_name))
 	return;
-      is_relay_reply = 1; 
+      is_relay_reply = 1;/*找到相应relay,记灵relay的响应报文*/
       iov.iov_len = sz;
 #ifdef HAVE_LINUX_NETWORK
       safe_strncpy(arp_req.arp_dev, ifr.ifr_name, sizeof(arp_req.arp_dev));
@@ -284,16 +299,19 @@ void dhcp_packet(time_t now, int pxe_fd)
     }
   else
     {
+	  //取报文入接口的ip地址（注：此实现仅支持返回一个ip地址）
       ifr.ifr_addr.sa_family = AF_INET;
       if (ioctl(daemon->dhcpfd, SIOCGIFADDR, &ifr) != -1 )
 	iface_addr = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr;
       else
 	{
+      //无法获取入接口ip地址的，直接返回
 	  if (iface_check(AF_INET, NULL, ifr.ifr_name, NULL))
 	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP packet received on %s which has no address"), ifr.ifr_name);
 	  return;
 	}
       
+      //如果入接口配置为禁止dhcp,则直接返回
       for (tmp = daemon->dhcp_except; tmp; tmp = tmp->next)
 	if (tmp->name && wildcard_match(tmp->name, ifr.ifr_name))
 	  return;
@@ -1053,7 +1071,7 @@ static struct dhcp_relay *relay_reply4(struct dhcp_packet *mess, char *arrival_i
   struct dhcp_relay *relay;
 
   if (mess->giaddr.s_addr == 0 || mess->op != BOOTREPLY)
-    return NULL;
+    return NULL;/*报文未经过中继或者报文为请求报文，直接返回*/
 
   for (relay = daemon->relay4; relay; relay = relay->next)
     {

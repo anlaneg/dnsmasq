@@ -432,6 +432,7 @@ int netmask_length(struct in_addr mask)
   return 32 - zero_count;
 }
 
+//检查a,b两地址是否在同一个网段
 int is_same_net(struct in_addr a, struct in_addr b, struct in_addr mask)
 {
   return (a.s_addr & mask.s_addr) == (b.s_addr & mask.s_addr);
@@ -717,20 +718,23 @@ int read_write(int fd, unsigned char *packet, int size, int rw)
 }
 
 /* Basically match a string value against a wildcard pattern.  */
+//支持通配符匹配
 int wildcard_match(const char* wildcard, const char* match)
 {
   while (*wildcard && *match)
     {
+	  //遇着通配符，直接相等（此实现要求通配符后面不能有其它字符）
       if (*wildcard == '*')
         return 1;
 
       if (*wildcard != *match)
-        return 0; 
+        return 0; //字符不相等，返回失配
 
       ++wildcard;
       ++match;
     }
 
+  //检查两者是否均结束，否则失配
   return *wildcard == *match;
 }
 

@@ -36,6 +36,7 @@ void dhcp_common_init(void)
 #endif
 }
 
+//自fd中读取报文
 ssize_t recv_dhcp_packet(int fd, struct msghdr *msg)
 {  
   ssize_t sz;
@@ -43,30 +44,40 @@ ssize_t recv_dhcp_packet(int fd, struct msghdr *msg)
   while (1)
     {
       msg->msg_flags = 0;
+
+      //读取报文，如果发生中断，则继续读
       while ((sz = recvmsg(fd, msg, MSG_PEEK | MSG_TRUNC)) == -1 && errno == EINTR);
       
+      //读取失败，返回-1
       if (sz == -1)
 	return -1;
       
+      //报文未截断，则跳出循环，读取结束
       if (!(msg->msg_flags & MSG_TRUNC))
 	break;
 
+      //未完成读取，扩大buffer,继续读取
       /* Very new Linux kernels return the actual size needed, 
 	 older ones always return truncated size */
       if ((size_t)sz == msg->msg_iov->iov_len)
 	{
+      //依注释所言，部分新kernel会返回需要的实际大小
+      //（此分支返回的是实际写了多少字节，具体不知道实际大小，直接增加100bytes)
 	  if (!expand_buf(msg->msg_iov, sz + 100))
 	    return -1;
 	}
       else
 	{
+      //上文提到的新kernel,直接按sz扩充
 	  expand_buf(msg->msg_iov, sz);
 	  break;
 	}
     }
   
+  //上面采用的msg_peek读取，数据未移除，这里再读一次
   while ((sz = recvmsg(fd, msg, 0)) == -1 && errno == EINTR);
   
+  //如果数据有截断，返回-1,否则返回读取到的大小
   return (msg->msg_flags & MSG_TRUNC) ? -1 : sz;
 }
 

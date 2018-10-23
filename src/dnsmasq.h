@@ -901,8 +901,9 @@ struct ra_interface {
 
 struct dhcp_context {
   unsigned int lease_time, addr_epoch;
-  struct in_addr netmask, broadcast;
+  struct in_addr netmask/*网段掩码*/, broadcast;
   struct in_addr local, router;
+  //网络可分配地址段
   struct in_addr start, end; /* range of available addresses */
 #ifdef HAVE_DHCP6
   struct in6_addr start6, end6; /* range of available addresses */
@@ -918,7 +919,9 @@ struct dhcp_context {
 };
 
 #define CONTEXT_STATIC         (1u<<0)
+//context包含netmask
 #define CONTEXT_NETMASK        (1u<<1)
+//context包含brocast
 #define CONTEXT_BRDCAST        (1u<<2)
 #define CONTEXT_PROXY          (1u<<3)
 #define CONTEXT_RA_ROUTER      (1u<<4)
@@ -1026,7 +1029,7 @@ extern struct daemon {
   unsigned long local_ttl, neg_ttl, max_ttl, min_cache_ttl, max_cache_ttl, auth_ttl, dhcp_ttl, use_dhcp_ttl;
   char *dns_client_id;
   struct hostsfile *addn_hosts;
-  struct dhcp_context *dhcp, *dhcp6;
+  struct dhcp_context *dhcp/*dhcpv4 context*/, *dhcp6/*dhcp v6 context*/;
   struct ra_interface *ra_interfaces;
   struct dhcp_config *dhcp_conf;
   struct dhcp_opt *dhcp_opts, *dhcp_match, *dhcp_opts6, *dhcp_match6;
@@ -1040,7 +1043,7 @@ extern struct daemon {
   struct dhcp_relay *relay4, *relay6;
   struct delay_config *delay_conf;
   int override;
-  int enable_pxe;
+  int enable_pxe;//是否启用pxe
   int doing_ra, doing_dhcp6;
   struct dhcp_netid_list *dhcp_ignore, *dhcp_ignore_names, *dhcp_gen_names; 
   struct dhcp_netid_list *force_broadcast, *bootp_dynamic;

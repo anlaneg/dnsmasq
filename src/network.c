@@ -18,6 +18,7 @@
 
 #ifdef HAVE_LINUX_NETWORK
 
+//通过ifindex获取接口名称
 int indextoname(int fd, int index, char *name)
 {
   struct ifreq ifr;

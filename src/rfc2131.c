@@ -115,14 +115,16 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
     return 0;
 
   /* check for DHCP rather than BOOTP */
+  //获取dhcp消息类型
   if ((opt = option_find(mess, sz, OPTION_MESSAGE_TYPE, 1)))
     {
       u32 cookie = htonl(DHCP_COOKIE);
       
       /* only insist on a cookie for DHCP. */
       if (memcmp(mess->options, &cookie, sizeof(u32)) != 0)
-	return 0;
+	return 0;//如果cookie值不相等，则直接返回不再处理
       
+      //取消息类型
       mess_type = option_uint(opt, 0, 1);
       
       /* two things to note here: expand_buf may move the packet,
@@ -292,6 +294,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	  /* If ciaddr is in the hardware derived set of contexts, leave that unchanged */
 	  addr = mess->ciaddr;
 	  for (context_tmp = context; context_tmp; context_tmp = context_tmp->current)
+		//如果addr同时与context_tmp->start,context_tem->end在同一个网段，则context命中
 	    if (context_tmp->netmask.s_addr && 
 		is_same_net(addr, context_tmp->start, context_tmp->netmask) &&
 		is_same_net(addr, context_tmp->end, context_tmp->netmask))
@@ -300,7 +303,8 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		break;
 	      }
 	} 
-		
+
+      //如果未命中context
       if (!context_new)
 	for (context_tmp = daemon->dhcp; context_tmp; context_tmp = context_tmp->next)
 	  {
@@ -309,6 +313,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	    /* guess the netmask for relayed networks */
 	    if (!(context_tmp->flags & CONTEXT_NETMASK) && context_tmp->netmask.s_addr == 0)
 	      {
+	    	//如果context没有配置netmask，或者配置了但配置的为０,检查是否为ABC地址
 		if (IN_CLASSA(ntohl(context_tmp->start.s_addr)) && IN_CLASSA(ntohl(context_tmp->end.s_addr)))
 		  netmask.s_addr = htonl(0xff000000);
 		else if (IN_CLASSB(ntohl(context_tmp->start.s_addr)) && IN_CLASSB(ntohl(context_tmp->end.s_addr)))
@@ -323,6 +328,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		is_same_net(addr, context_tmp->start, netmask) &&
 		is_same_net(addr, context_tmp->end, netmask))
 	      {
+	    	//使用假设的mask或者配置的mask,检查addr，如果在context_tmp围内，则置netmask
 		context_tmp->netmask = netmask;
 		if (context_tmp->local.s_addr == 0)
 		  context_tmp->local = fallback;
@@ -330,6 +336,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  context_tmp->router = mess->giaddr;
 	   
 		/* fill in missing broadcast addresses for relayed ranges */
+		//如果未配置brdcast,则设置广播地址为主机位为全１
 		if (!(context_tmp->flags & CONTEXT_BRDCAST) && context_tmp->broadcast.s_addr == 0 )
 		  context_tmp->broadcast.s_addr = context_tmp->start.s_addr | ~context_tmp->netmask.s_addr;
 		
@@ -344,6 +351,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
   
   if (!context)
     {
+	  //找不到有效的地址range
       my_syslog(MS_DHCP | LOG_WARNING, _("no address range available for DHCP request %s %s"), 
 		subnet_addr.s_addr ? _("with subnet selector") : _("via"),
 		subnet_addr.s_addr ? inet_ntoa(subnet_addr) : (mess->giaddr.s_addr ? inet_ntoa(mess->giaddr) : iface_name));
@@ -1697,6 +1705,7 @@ static void log_options(unsigned char *start, u32 xid)
     }
 }
 
+//自p位置开始查找opt选项，其必须满足len长度大小minsize,查找的结尾位置在end处
 static unsigned char *option_find1(unsigned char *p, unsigned char *end, int opt, int minsize)
 {
   while (1) 
@@ -1704,19 +1713,26 @@ static unsigned char *option_find1(unsigned char *p, unsigned char *end, int opt
       if (p >= end)
 	return NULL;
       else if (*p == OPTION_END)
+    //遇到选项结束，如果查找的是option_end,则返回其位置，否则直接返回NULL(未找到）
 	return opt == OPTION_END ? p : NULL;
       else if (*p == OPTION_PAD)
-	p++;
+	p++;//遇到pad,直接跳过
       else 
 	{ 
+      //其它选项均为tlv格式，t（１个字节）l（１个字节）v（长度由l定义）
 	  int opt_len;
 	  if (p > end - 2)
+		//此选项不满足tlv规定，直接返回NULL
 	    return NULL; /* malformed packet */
+	  //取选项长度
 	  opt_len = option_len(p);
 	  if (p > end - (2 + opt_len))
+		//此选项不江足tlv,直接返回NULL
 	    return NULL; /* malformed packet */
+	  //如果是要查找的opt,且opt_len满足约赖，则返回当前位置
 	  if (*p == opt && opt_len >= minsize)
 	    return p;
+	  //跳过tlv，跳到下一个option
 	  p += opt_len + 2;
 	}
     }
@@ -1727,14 +1743,17 @@ static unsigned char *option_find(struct dhcp_packet *mess, size_t size, int opt
   unsigned char *ret, *overload;
   
   /* skip over DHCP cookie; */
+  //查普通选项
   if ((ret = option_find1(&mess->options[0] + sizeof(u32), ((unsigned char *)mess) + size, opt_type, minsize)))
     return ret;
 
   /* look for overload option. */
+  //查询option附件选项
   if (!(overload = option_find1(&mess->options[0] + sizeof(u32), ((unsigned char *)mess) + size, OPTION_OVERLOAD, 1)))
     return NULL;
   
   /* Can we look in filename area ? */
+  //按overload指定，分析上file区或者sname区查找
   if ((overload[2] & 1) &&
       (ret = option_find1(&mess->file[0], &mess->file[128], opt_type, minsize)))
     return ret;

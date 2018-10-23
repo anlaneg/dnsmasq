@@ -969,8 +969,10 @@ int main (int argc, char **argv)
 #ifdef HAVE_DHCP
       if (daemon->dhcp || daemon->relay4)
 	{
+      //注册dhcpfd的pollin事件
 	  poll_listen(daemon->dhcpfd, POLLIN);
 	  if (daemon->pxefd != -1)
+		//注册pxefd的pollin事件
 	    poll_listen(daemon->pxefd, POLLIN);
 	}
 #endif
@@ -1111,8 +1113,10 @@ int main (int argc, char **argv)
       if (daemon->dhcp || daemon->relay4)
 	{
 	  if (poll_check(daemon->dhcpfd, POLLIN))
+		/*如果dhcpfd可读取，则处理dhcp报文，不考虑pxe*/
 	    dhcp_packet(now, 0);
 	  if (daemon->pxefd != -1 && poll_check(daemon->pxefd, POLLIN))
+		/*如果pxefd可读取，处理dhcp报文，考虑pxe*/
 	    dhcp_packet(now, 1);
 	}
 
