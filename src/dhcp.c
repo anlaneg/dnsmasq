@@ -138,6 +138,7 @@ void dhcp_init(void)
 #endif  
 }
 
+//dhcp报文接收及响应
 void dhcp_packet(time_t now, int pxe_fd)
 {
   /*要操作pxefd,还是dhcpfd*/
@@ -256,11 +257,14 @@ void dhcp_packet(time_t now, int pxe_fd)
      for DHCP contexts associated with the aliased interface instead
      of with the aliasing one. */
   rcvd_iface_index = iface_index;
+  //如果用户配置了桥接口，则检查收到dhcp的报文是否为桥接口的一个别名，如果是更新接口为桥接口
   for (bridge = daemon->bridges; bridge; bridge = bridge->next)
     {
+	  //针对具体的一个桥接口，检查桥接口所有别名，报文入接口是否与其相等
       for (alias = bridge->alias; alias; alias = alias->next)
 	if (wildcard_matchn(alias->iface, ifr.ifr_name, IF_NAMESIZE))
 	  {
+		//如果相等，则更新iface_index为桥接口ifindex
 	    if (!(iface_index = if_nametoindex(bridge->iface)))
 	      {
 		my_syslog(MS_DHCP | LOG_WARNING,
@@ -270,6 +274,7 @@ void dhcp_packet(time_t now, int pxe_fd)
 	      }
 	    else 
 	      {
+	    	//并更新入接口名称
 		safe_strncpy(ifr.ifr_name,  bridge->iface, sizeof(ifr.ifr_name));
 		break;
 	      }
@@ -285,6 +290,7 @@ void dhcp_packet(time_t now, int pxe_fd)
     unicast_dest = 1;
 #endif
   
+  //中继转发报文处理
   if ((relay = relay_reply4((struct dhcp_packet *)daemon->dhcp_packet.iov_base, ifr.ifr_name)))
     {
       /* Reply from server, using us as relay. */
@@ -328,8 +334,10 @@ void dhcp_packet(time_t now, int pxe_fd)
       parm.relay_local.s_addr = 0;
       parm.ind = iface_index;
       
+      //接口名称，接口地址检查（检查是否合乎配置要求的约束）
       if (!iface_check(AF_INET, (struct all_addr *)&iface_addr, ifr.ifr_name, NULL))
 	{
+    	  //未通过检查
 	  /* If we failed to match the primary address of the interface, see if we've got a --listen-address
 	     for a secondary */
 	  struct match_param match;
@@ -337,17 +345,20 @@ void dhcp_packet(time_t now, int pxe_fd)
 	  match.matched = 0;
 	  match.ind = iface_index;
 	  
+	  //如果没有配置监听地址或者配置了监听地址，但地址检查未通过，则返回
+	  //在此处获取接口iface_index的所有ip地址，并检查其是否配置有需要监听的地址
 	  if (!daemon->if_addrs ||
 	      !iface_enumerate(AF_INET, &match, check_listen_addrs) ||
-	      !match.matched)
+	      !match.matched/*如果在iface_enumerate中匹配上，则会将match.matched置为１*/)
 	    return;
 	  
+	  //取出匹配的接口地址
 	  iface_addr = match.addr;
 	  /* make sure secondary address gets priority in case
 	     there is more than one address on the interface in the same subnet */
 	  complete_context(match.addr, iface_index, NULL, match.netmask, match.broadcast, &parm);
 	}    
-      
+      //解决dhcp-range配置不合问题
       if (!iface_enumerate(AF_INET, &parm, complete_context))
 	return;
 
@@ -358,9 +369,11 @@ void dhcp_packet(time_t now, int pxe_fd)
 
       /* May have configured relay, but not DHCP server */
       if (!daemon->dhcp)
-	return;
+	return;//防仅启用relay
 
+      //租约维护，删除掉过期的租约
       lease_prune(NULL, now); /* lose any expired leases */
+      //响应dhcp报文
       iov.iov_len = dhcp_reply(parm.current, ifr.ifr_name, iface_index, (size_t)sz, 
 			       now, unicast_dest, loopback, &is_inform, pxe_fd, iface_addr, recvtime);
       lease_update_file(now);
@@ -490,7 +503,7 @@ void dhcp_packet(time_t now, int pxe_fd)
 }
 
 /* check against secondary interface addresses */
-static int check_listen_addrs(struct in_addr local, int if_index, char *label,
+static int check_listen_addrs(struct in_addr local/*配置的地址*/, int if_index/*接口编号*/, char *label,
 			      struct in_addr netmask, struct in_addr broadcast, void *vparam)
 {
   struct match_param *param = vparam;
@@ -498,8 +511,10 @@ static int check_listen_addrs(struct in_addr local, int if_index, char *label,
 
   (void) label;
 
+  //如果是我们要找到接口，则检查其是否我们要找到地址
   if (if_index == param->ind)
     {
+	  //如果此地址与我们要求监听的地址一致
       for (tmp = daemon->if_addrs; tmp; tmp = tmp->next)
 	if ( tmp->addr.sa.sa_family == AF_INET &&
 	     tmp->addr.in.sin_addr.s_addr == local.s_addr)
@@ -525,8 +540,8 @@ static int check_listen_addrs(struct in_addr local, int if_index, char *label,
 
    Note that the current chain may be superseded later for configured hosts or those coming via gateways. */
 
-static int complete_context(struct in_addr local, int if_index, char *label,
-			    struct in_addr netmask, struct in_addr broadcast, void *vparam)
+static int complete_context(struct in_addr local/*入接口ip*/, int if_index/*入接口ifidex*/, char *label,
+			    struct in_addr netmask/*入接口掩码*/, struct in_addr broadcast/*入接口广播地址*/, void *vparam)
 {
   struct dhcp_context *context;
   struct dhcp_relay *relay;
@@ -534,12 +549,16 @@ static int complete_context(struct in_addr local, int if_index, char *label,
 
   (void)label;
   
+  //遍历每个dhcp-range，查找能匹配local的dhcp-range,如果dhcp-range没有完全配置，则使用入接口的相关信息，例如
+  //网关，掩码，广播地址，
   for (context = daemon->dhcp; context; context = context->next)
     {
+	  //context没有配置mask时，采用入接口掩码检查local与context在一个网段
       if (!(context->flags & CONTEXT_NETMASK) &&
 	  (is_same_net(local, context->start, netmask) ||
 	   is_same_net(local, context->end, netmask)))
-      { 
+      {
+    	  //？？？？
 	if (context->netmask.s_addr != netmask.s_addr &&
 	    !(is_same_net(local, context->start, netmask) &&
 	      is_same_net(local, context->end, netmask)))
@@ -548,10 +567,12 @@ static int complete_context(struct in_addr local, int if_index, char *label,
 	    strcpy(daemon->dhcp_buff2, inet_ntoa(context->end));
 	    my_syslog(MS_DHCP | LOG_WARNING, _("DHCP range %s -- %s is not consistent with netmask %s"),
 		      daemon->dhcp_buff, daemon->dhcp_buff2, inet_ntoa(netmask));
-	  }	
+	  }
+	//使用入接口对应的mask
  	context->netmask = netmask;
       }
       
+      //配置了netmask且网络一致
       if (context->netmask.s_addr != 0 &&
 	  is_same_net(local, context->start, context->netmask) &&
 	  is_same_net(local, context->end, context->netmask))
@@ -559,12 +580,13 @@ static int complete_context(struct in_addr local, int if_index, char *label,
 	  /* link it onto the current chain if we've not seen it before */
 	  if (if_index == param->ind && context->current == context)
 	    {
-	      context->router = local;
+	      context->router = local;/*暂定local为路由地址*/
 	      context->local = local;
 	      context->current = param->current;
 	      param->current = context;
 	    }
 	  
+	  //广播地址如果未匹配，使用入接口广播地址或者掩码对应的广播地址
 	  if (!(context->flags & CONTEXT_BRDCAST))
 	    {
 	      if (is_same_net(broadcast, context->start, context->netmask))

@@ -66,6 +66,7 @@ struct dhcp_boot *find_boot(struct dhcp_netid *netid);
 static int pxe_uefi_workaround(int pxe_arch, struct dhcp_netid *netid, struct dhcp_packet *mess, struct in_addr local, time_t now, int pxe);
 static void apply_delay(u32 xid, time_t recvtime, struct dhcp_netid *netid);
 
+//dhcp报文响应
 size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		  size_t sz, time_t now, int unicast_dest, int loopback,
 		  int *is_inform, int pxe, struct in_addr fallback, time_t recvtime)
@@ -108,6 +109,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
   iface_id.next = NULL;
   netid = &iface_id; 
   
+  //仅处理dhcp请求报文，且mac地址最大支16字节
   if (mess->op != BOOTREQUEST || mess->hlen > DHCP_CHADDR_MAX)
     return 0;
    
@@ -130,15 +132,17 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
       /* two things to note here: expand_buf may move the packet,
 	 so reassign mess from daemon->packet. Also, the size
 	 sent includes the IP and UDP headers, hence the magic "-28" */
+      //获取请求方宣称的支持的最大消息长度
       if ((opt = option_find(mess, sz, OPTION_MAXMESSAGE, 2)))
 	{
 	  size_t size = (size_t)option_uint(opt, 0, 2) - 28;
 	  
 	  if (size > DHCP_PACKET_MAX)
-	    size = DHCP_PACKET_MAX;
+	    size = DHCP_PACKET_MAX;//服务端最大支持尺寸
 	  else if (size < sizeof(struct dhcp_packet))
-	    size = sizeof(struct dhcp_packet);
+	    size = sizeof(struct dhcp_packet);//服务端最小尺寸
 	  
+	  //扩大报文大小
 	  if (expand_buf(&daemon->dhcp_packet, size))
 	    {
 	      mess = (struct dhcp_packet *)daemon->dhcp_packet.iov_base;
@@ -148,10 +152,12 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 
       /* Some buggy clients set ciaddr when they shouldn't, so clear that here since
 	 it can affect the context-determination code. */
+      //客户端discover类型消息及包含地址请求ip时，其客户端地址总为０
       if ((option_find(mess, sz, OPTION_REQUESTED_IP, INADDRSZ) || mess_type == DHCPDISCOVER))
 	mess->ciaddr.s_addr = 0;
 
       /* search for device identity from CPEWAN devices, we pass this through to the script */
+      //提取vendor标识符
       if ((opt = option_find(mess, sz, OPTION_VENDOR_IDENT_OPT, 5)))
 	{
 	  unsigned  int elen, offset, len = option_len(opt);
@@ -181,6 +187,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	    }
 	}
       
+      //提取relay agent选项
       if ((opt = option_find(mess, sz, OPTION_AGENT_ID, 1)))
 	{
 	  /* Any agent-id needs to be copied back out, verbatim, as the last option
@@ -232,10 +239,12 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	}
 
       /* Check for RFC3011 subnet selector - only if RFC3527 one not present */
+      //提取subnet更喜欢的网段
       if (subnet_addr.s_addr == 0 && (opt = option_find(mess, sz, OPTION_SUBNET_SELECT, INADDRSZ)))
 	subnet_addr = option_addr(opt);
       
       /* If there is no client identifier option, use the hardware address */
+      //获取dhcp客户端标记,（即客户端mac地址）
       if ((opt = option_find(mess, sz, OPTION_CLIENT_ID, 1)))
 	{
 	  clid_len = option_len(opt);
@@ -243,12 +252,13 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 	}
 
       /* do we have a lease in store? */
-      lease = lease_find_by_client(mess->chaddr, mess->hlen, mess->htype, clid, clid_len);
+      lease = lease_find_by_client(mess->chaddr/*客户端mac地址*/, mess->hlen/*客户端mac地址长度*/, mess->htype/*客户端mac地址类型*/, clid/*客户端dhcp标记*/, clid_len);
 
       /* If this request is missing a clid, but we've seen one before, 
 	 use it again for option matching etc. */
       if (lease && !clid && lease->clid)
 	{
+    	  //lease存在，自lease中获取client标识符
 	  clid_len = lease->clid_len;
 	  clid = lease->clid;
 	}
@@ -471,6 +481,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
      save client-supplied vendor class */
   if ((opt = option_find(mess, sz, OPTION_VENDOR_ID, 1)))
     {
+	  //获取vendor_id,例如手机常见的：android-dhcp-8.0.0
       memcpy(daemon->dhcp_buff3, option_ptr(opt, 0), option_len(opt));
       vendor_class_len = option_len(opt);
     }

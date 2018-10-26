@@ -31,6 +31,7 @@
    smaller than this. Sigh...........   */
 #define MIN_PACKETSZ             300
 
+//更多详情可参阅：http://www.ipamworldwide.com/ipam/isc-dhcpv4-options.html
 //dhcp选项字段
 #define OPTION_PAD               0
 //网络掩码
@@ -52,9 +53,12 @@
 #define OPTION_SERVER_IDENTIFIER 54
 #define OPTION_REQUESTED_OPTIONS 55
 #define OPTION_MESSAGE           56
+//integer - used as a default if not provided by the client
+//用户态通告的自已支持最大的消息尺寸
 #define OPTION_MAXMESSAGE        57
 #define OPTION_T1                58
 #define OPTION_T2                59
+//客户端的vendor_id,例如手机常见的android-dhcp-8.0.0
 #define OPTION_VENDOR_ID         60
 #define OPTION_CLIENT_ID         61
 #define OPTION_SNAME             66
@@ -66,10 +70,12 @@
 #define OPTION_AGENT_ID          82
 #define OPTION_ARCH              93
 #define OPTION_PXE_UUID          97
+//客户端更期待分配的subnet
 #define OPTION_SUBNET_SELECT     118
 #define OPTION_DOMAIN_SEARCH     119
 #define OPTION_SIP_SERVER        120
 #define OPTION_VENDOR_IDENT      124
+//vendor的标识符（其值为string类型）
 #define OPTION_VENDOR_IDENT_OPT  125
 #define OPTION_END               255
 

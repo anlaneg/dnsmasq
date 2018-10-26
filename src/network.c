@@ -110,6 +110,7 @@ int indextoname(int fd, int index, char *name)
 
 #endif
 
+//接口名称，接口地址检查（检查是否合乎配置要求的约束），返回１，通过检查，返回０，未通过检查。
 int iface_check(int family, struct all_addr *addr, char *name, int *auth)
 {
   struct iname *tmp;
@@ -123,14 +124,17 @@ int iface_check(int family, struct all_addr *addr, char *name, int *auth)
   if (auth)
     *auth = 0;
   
+  //如果配置了接口名称及监听的ip地址
   if (daemon->if_names || daemon->if_addrs)
     {
       ret = 0;
 
+      //检查接口名称是否合乎配置约束
       for (tmp = daemon->if_names; tmp; tmp = tmp->next)
 	if (tmp->name && wildcard_match(tmp->name, name))
 	  ret = tmp->used = 1;
-	        
+
+      //检查地址是否合乎配置约束
       if (addr)
 	for (tmp = daemon->if_addrs; tmp; tmp = tmp->next)
 	  if (tmp->addr.sa.sa_family == family)
@@ -147,6 +151,7 @@ int iface_check(int family, struct all_addr *addr, char *name, int *auth)
 	    }          
     }
   
+  //如果地址没有匹配，查看接口反向匹配
   if (!match_addr)
     for (tmp = daemon->if_except; tmp; tmp = tmp->next)
       if (tmp->name && wildcard_match(tmp->name, name))

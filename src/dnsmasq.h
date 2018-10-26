@@ -706,18 +706,22 @@ struct frec {
 #define LEASE_HAVE_HWADDR  128  /* Have set hwaddress */
 
 struct dhcp_lease {
+	//客户端id长度
   int clid_len;          /* length of client identifier */
+  //客户端id(一般为mac地址）
   unsigned char *clid;   /* clientid */
   char *hostname, *fqdn; /* name from client-hostname option or config */
   char *old_hostname;    /* hostname before it moved to another lease */
   int flags;
+  //租约过期时间
   time_t expires;        /* lease expiry */
 #ifdef HAVE_BROKEN_RTC
   unsigned int length;
 #endif
-  int hwaddr_len, hwaddr_type;
+  int hwaddr_len/*硬件地址长度*/, hwaddr_type/*硬件地址类型*/;
+  //硬件地址
   unsigned char hwaddr[DHCP_CHADDR_MAX]; 
-  struct in_addr addr, override, giaddr;
+  struct in_addr addr/*租约地址*/, override, giaddr;
   unsigned char *extradata;
   unsigned int extradata_len, extradata_size;
   int last_interface;
@@ -798,7 +802,7 @@ struct dhcp_config {
 #define CONFIG_WILDCARD       8192
 
 struct dhcp_opt {
-  int opt, len, flags;
+  int opt/*选项值*/, len, flags;
   union {
     int encap;
     unsigned int wildcard_mask;
@@ -869,9 +873,10 @@ struct dhcp_mac {
   struct dhcp_mac *next;
 };
 
+//通过引用此结构，解决桥上任意口收到dhcp请求，均认为是桥接口收到
 struct dhcp_bridge {
-  char iface[IF_NAMESIZE];
-  struct dhcp_bridge *alias, *next;
+  char iface[IF_NAMESIZE];//桥名称
+  struct dhcp_bridge *alias/*此桥上其它接口名称*/, *next/*指向下一个桥接口*/;
 };
 
 struct cond_domain {
@@ -900,8 +905,8 @@ struct ra_interface {
 };
 
 struct dhcp_context {
-  unsigned int lease_time, addr_epoch;
-  struct in_addr netmask/*网段掩码*/, broadcast;
+  unsigned int lease_time/*租约时间*/, addr_epoch;
+  struct in_addr netmask/*网段掩码*/, broadcast/*广播地址*/;
   struct in_addr local, router;
   //网络可分配地址段
   struct in_addr start, end; /* range of available addresses */
@@ -921,7 +926,7 @@ struct dhcp_context {
 #define CONTEXT_STATIC         (1u<<0)
 //context包含netmask
 #define CONTEXT_NETMASK        (1u<<1)
-//context包含brocast
+//context包含广播地址配置
 #define CONTEXT_BRDCAST        (1u<<2)
 #define CONTEXT_PROXY          (1u<<3)
 #define CONTEXT_RA_ROUTER      (1u<<4)
@@ -1017,7 +1022,8 @@ extern struct daemon {
   struct cond_domain *cond_domain, *synth_domains;
   char *runfile; 
   char *lease_change_command;
-  struct iname *if_names, *if_addrs, *if_except, *dhcp_except, *auth_peers, *tftp_interfaces;
+  struct iname *if_names/*配置指定的接口名称*/, *if_addrs/*用户配置的监听指定ip地址*/,
+  *if_except/*配置反向接口名称*/, *dhcp_except/*指定接口禁止dhcp报文*/, *auth_peers, *tftp_interfaces;
   struct bogus_addr *bogus_addr, *ignore_addr;
   struct server *servers;
   struct ipsets *ipsets;
@@ -1029,10 +1035,11 @@ extern struct daemon {
   unsigned long local_ttl, neg_ttl, max_ttl, min_cache_ttl, max_cache_ttl, auth_ttl, dhcp_ttl, use_dhcp_ttl;
   char *dns_client_id;
   struct hostsfile *addn_hosts;
+  //挂接配置的dhcp range段
   struct dhcp_context *dhcp/*dhcpv4 context*/, *dhcp6/*dhcp v6 context*/;
   struct ra_interface *ra_interfaces;
   struct dhcp_config *dhcp_conf;
-  struct dhcp_opt *dhcp_opts, *dhcp_match, *dhcp_opts6, *dhcp_match6;
+  struct dhcp_opt *dhcp_opts/*普通选项*/, *dhcp_match/*match类选项*/, *dhcp_opts6, *dhcp_match6;
   struct dhcp_match_name *dhcp_name_match;
   struct dhcp_vendor *dhcp_vendors;
   struct dhcp_mac *dhcp_macs;
@@ -1106,7 +1113,7 @@ extern struct daemon {
   int inotifyfd;
 #endif
 #if defined(HAVE_LINUX_NETWORK)
-  int netlinkfd;
+  int netlinkfd;/*netlink通信fd*/
 #elif defined(HAVE_BSD_NETWORK)
   int dhcp_raw_fd, dhcp_icmp_fd, routefd;
 #endif

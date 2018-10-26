@@ -294,6 +294,7 @@ void safe_strncpy(char *dest, const char *src, size_t size)
     }
 }
 
+//创建管道，并置为非阻塞（读端为是否设置为可阻塞，受read_noblock控制）
 void safe_pipe(int *fd, int read_noblock)
 {
   if (pipe(fd) == -1 || 

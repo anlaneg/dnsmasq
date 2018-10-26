@@ -64,6 +64,7 @@ static int read_leases(time_t now, FILE *leasestream)
 	
 	if (inet_pton(AF_INET, daemon->namebuff, &addr.addr.addr4))
 	  {
+		//申请一个ipv4租约
 	    if ((lease = lease4_allocate(addr.addr.addr4)))
 	      domain = get_domain(lease->addr);
 	    
@@ -240,6 +241,7 @@ static void ourprintf(int *errp, char *format, ...)
   va_end(ap);
 }
 
+//更新租约文件
 void lease_update_file(time_t now)
 {
   struct dhcp_lease *lease;
@@ -253,6 +255,7 @@ void lease_update_file(time_t now)
       if (errno != 0 || ftruncate(fileno(daemon->lease_stream), 0) != 0)
 	err = errno;
       
+      //遍历有效租约，将其写入文件
       for (lease = leases; lease; lease = lease->next)
 	{
 
@@ -543,25 +546,29 @@ void lease_update_dns(int force)
     }
 }
 
+//移除掉过期的lease,如果target不为NULL,则无论target是否过期均移除
 void lease_prune(struct dhcp_lease *target, time_t now)
 {
-  struct dhcp_lease *lease, *tmp, **up;
+  struct dhcp_lease *lease, *tmp, **up/*前一租约，用于链表维护*/;
 
   for (lease = leases, up = &leases; lease; lease = tmp)
     {
       tmp = lease->next;
       if ((lease->expires != 0 && difftime(now, lease->expires) > 0) || lease == target)
 	{
+      //租约过期或者即为查找的租约（target)
 	  file_dirty = 1;
 	  if (lease->hostname)
 	    dns_dirty = 1;
 
 	  daemon->metrics[lease->addr.s_addr ? METRIC_LEASES_PRUNED_4 : METRIC_LEASES_PRUNED_6]++;
 
+	  //断开lease所指向的链
  	  *up = lease->next; /* unlink */
 	  
 	  /* Put on old_leases list 'till we
 	     can run the script */
+ 	  //将lease存放在old_leases链上
 	  lease->next = old_leases;
 	  old_leases = lease;
 	  
@@ -578,6 +585,7 @@ struct dhcp_lease *lease_find_by_client(unsigned char *hwaddr, int hw_len, int h
 {
   struct dhcp_lease *lease;
 
+  //如查指定了客户端标识，查询lease
   if (clid)
     for (lease = leases; lease; lease = lease->next)
       {
@@ -585,11 +593,13 @@ struct dhcp_lease *lease_find_by_client(unsigned char *hwaddr, int hw_len, int h
 	if (lease->flags & (LEASE_TA | LEASE_NA))
 	  continue;
 #endif
+	//比对客户端标识
 	if (lease->clid && clid_len == lease->clid_len &&
 	    memcmp(clid, lease->clid, clid_len) == 0)
 	  return lease;
       }
   
+  //如果未指定客户端标识，则检查hwaddr
   for (lease = leases; lease; lease = lease->next)	
     {
 #ifdef HAVE_DHCP6
@@ -749,6 +759,7 @@ struct in_addr lease_find_max_addr(struct dhcp_context *context)
   return addr;
 }
 
+//申请dhcp租约
 static struct dhcp_lease *lease_allocate(void)
 {
   struct dhcp_lease *lease;
@@ -771,6 +782,7 @@ static struct dhcp_lease *lease_allocate(void)
   return lease;
 }
 
+//申请ipv4租约
 struct dhcp_lease *lease4_allocate(struct in_addr addr)
 {
   struct dhcp_lease *lease = lease_allocate();

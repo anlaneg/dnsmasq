@@ -136,6 +136,7 @@ static ssize_t netlink_recv(void)
 
 /* family = AF_UNSPEC finds ARP table entries.
    family = AF_LOCAL finds MAC addresses. */
+//AF_UNSPEC获取neighbor表信息，AF_LOCAL获取mac地址表，其它获取接口地址，并针对结果执行回调
 int iface_enumerate(int family, void *parm, int (*callback)())
 {
   struct sockaddr_nl addr;
@@ -160,7 +161,7 @@ int iface_enumerate(int family, void *parm, int (*callback)())
   else if (family == AF_LOCAL)
     req.nlh.nlmsg_type = RTM_GETLINK;
   else
-    req.nlh.nlmsg_type = RTM_GETADDR;
+    req.nlh.nlmsg_type = RTM_GETADDR;/*请求获取接口地址*/
 
   req.nlh.nlmsg_len = sizeof(req);
   req.nlh.nlmsg_flags = NLM_F_ROOT | NLM_F_MATCH | NLM_F_REQUEST | NLM_F_ACK; 
@@ -214,6 +215,7 @@ int iface_enumerate(int family, void *parm, int (*callback)())
 		    struct in_addr netmask, addr, broadcast;
 		    char *label = NULL;
 
+		    //构造掩码
 		    netmask.s_addr = htonl(~(in_addr_t)0 << (32 - ifa->ifa_prefixlen));
 
 		    addr.s_addr = 0;
@@ -231,6 +233,7 @@ int iface_enumerate(int family, void *parm, int (*callback)())
 			rta = RTA_NEXT(rta, len1);
 		      }
 		    
+		    //获取到了地址，执行回调
 		    if (addr.s_addr && callback_ok)
 		      if (!((*callback)(addr, ifa->ifa_index, label,  netmask, broadcast, parm)))
 			callback_ok = 0;

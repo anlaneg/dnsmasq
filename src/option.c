@@ -190,7 +190,7 @@ static const struct myoption opts[] =
     { "dhcp-leasefile", 2, 0, 'l' },
     { "dhcp-lease", 1, 0, 'l' },
     { "dhcp-host", 1, 0, 'G' },
-    { "dhcp-range", 1, 0, 'F' },
+    { "dhcp-range", 1, 0, 'F' },//配置dhcp-range段
     { "dhcp-option", 1, 0, 'O' },
     { "dhcp-boot", 1, 0, 'M' },
     { "domain", 1, 0, 's' },
@@ -242,7 +242,7 @@ static const struct myoption opts[] =
     { "dhcp-mac", 1, 0, '4' },
     { "no-ping", 0, 0, '5' },
     { "dhcp-script", 1, 0, '6' },
-    { "conf-dir", 1, 0, '7' },
+    { "conf-dir", 1, 0, '7' },//配置文件目录
     { "log-facility", 1, 0 ,'8' },
     { "leasefile-ro", 0, 0, '9' },
     { "dns-forward-max", 1, 0, '0' },
@@ -341,16 +341,17 @@ static const struct myoption opts[] =
   };
 
 
+//选项容许重复
 #define ARG_DUP       OPT_LAST
 #define ARG_ONE       OPT_LAST + 1
 #define ARG_USED_CL   OPT_LAST + 2
 #define ARG_USED_FILE OPT_LAST + 3
 
 static struct {
-  int opt;
-  unsigned int rept;
+  int opt;//选项字符
+  unsigned int rept;//１。选项repeat限制（多次，１次，被命令行用，被文件用）；２。选项索引
   char * const flagdesc;
-  char * const desc;
+  char * const desc;//描述信息
   char * const arg;
 } usage[] = {
   { 'a', ARG_DUP, "<ipaddr>",  gettext_noop("Specify local address(es) to listen on."), NULL },
@@ -596,25 +597,28 @@ static char *opt_string_alloc(char *cp)
 
 /* find next comma, split string with zero and eliminate spaces.
    return start of string following comma */
-
+//将s用c划分的方式剪开
 static char *split_chr(char *s, char c)
 {
   char *comma, *p;
 
+  //s为空，或者无法查找到c,则直接返回NULL
   if (!s || !(comma = strchr(s, c)))
     return NULL;
   
   p = comma;
   *comma = ' ';
   
-  for (; *comma == ' '; comma++);
+  for (; *comma == ' '; comma++);//跳过尾部的空格
  
+  //将s串在c位置处剪断，多考虑尾部是空格的情况
   for (; (p >= s) && *p == ' '; p--)
     *p = 0;
     
   return comma;
 }
 
+//将s沿第一个','号剪开，如果返回NULL,则s没有','号
 static char *split(char *s)
 {
   return split_chr(s, ',');
@@ -950,6 +954,7 @@ static struct server *add_rev6(struct in6_addr *addr, int msize)
 
 #ifdef HAVE_DHCP
 
+//检查参数是否以'net:','tag:'开头
 static int is_tag_prefix(char *arg)
 {
   if (arg && (strstr(arg, "net:") == arg || strstr(arg, "tag:") == arg))
@@ -969,6 +974,7 @@ static char *set_prefix(char *arg)
 /* This is too insanely large to keep in-line in the switch */
 static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 {
+  //构造dhcp选项
   struct dhcp_opt *new = opt_malloc(sizeof(struct dhcp_opt));
   char lenchar = 0, *cp;
   int addrs, digs, is_addr, is_addr6, is_hex, is_dec, is_string, dots;
@@ -988,10 +994,12 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
     {
       comma = split(arg);      
 
+      //选项值
       for (cp = arg; *cp; cp++)
 	if (*cp < '0' || *cp > '9')
 	  break;
       
+      //如果仅给出选项，没有给选项值，则跳出
       if (!*cp)
 	{
 	  new->opt = atoi(arg);
@@ -1000,6 +1008,7 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	  break;
 	}
       
+      //如果有option:前缀，则通过选项名查询选项值
       if (strstr(arg, "option:") == arg)
 	{
 	  if ((new->opt = lookup_dhcp_opt(AF_INET, arg+7)) != -1)
@@ -1038,6 +1047,7 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
 	  break;
 	}
 #endif
+      //针对vendor，配置字符串
       else if (strstr(arg, "vendor:") == arg)
 	{
 	  new->u.vendor_class = (unsigned char *)opt_string_alloc(arg+7);
@@ -1093,6 +1103,7 @@ static int parse_dhcp_opt(char *errstr, char *arg, int flags)
   if (!option_ok)
     ret_err(_("bad dhcp-option"));
   
+  //解析选项值
   if (comma)
     {
       /* characterise the value */
@@ -1512,7 +1523,8 @@ void reset_option_bool(unsigned int opt)
     daemon->options2 &= ~(1u << (opt - 32));
 }
 
-static int one_opt(int option, char *arg, char *errstr, char *gen_err, int command_line, int servers_only)
+//统一处理进程选项
+static int one_opt(int option, char *arg, char *errstr, char *gen_err, int command_line/*选项是否来源于命令行*/, int servers_only)
 {      
   int i;
   char *comma;
@@ -1529,7 +1541,9 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	   {
 	     /* command line */
 	     if (rept == ARG_USED_CL)
+	    	 //重复使用选项，报错
 	       ret_err(_("illegal repeated flag"));
+	     //首次出现标记（对只容许出现一次的选项采用）
 	     if (rept == ARG_ONE)
 	       usage[i].rept = ARG_USED_CL;
 	   }
@@ -1538,10 +1552,12 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	     /* allow file to override command line */
 	     if (rept == ARG_USED_FILE)
 	       ret_err(_("illegal repeated keyword"));
+	     //容许文件override命令行选项
 	     if (rept == ARG_USED_CL || rept == ARG_ONE)
 	       usage[i].rept = ARG_USED_FILE;
 	   }
 
+	 //标记选项被开启（这些选项均不要求参数，故没有一次或多次的限制）
 	 if (rept != ARG_DUP && rept != ARG_ONE && rept != ARG_USED_CL) 
 	   {
 	     set_option_bool(rept);
@@ -1572,12 +1588,17 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	struct list {
 	  char *suffix;
 	  struct list *next;
+	  /*ignore_suffix需要忽略的后缀，match_suffix需要匹配的后缀*/
 	} *ignore_suffix = NULL, *match_suffix = NULL, *li;
 	
+	//将arg沿第一个','号拆开，如果arg不包含','号，则返回NULL
 	comma = split(arg);
+
+	//将arg制作副本directory
 	if (!(directory = opt_string_alloc(arg)))
 	  break;
 	
+	//如果arg中至少包含一个','号，则进入
 	for (arg = comma; arg; arg = comma) 
 	  {
 	    comma = split(arg);
@@ -1587,10 +1608,12 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		if (*arg == '*')
 		  {
 		    /* "*" with no suffix is a no-op */
+			//‘*’号开头的，且没有后缀，直接忽略
 		    if (arg[1] == 0)
 		      free(li);
 		    else
 		      {
+		    	//首字符为'*'号，且有后缀，认为是匹配后缀
 			li->next = match_suffix;
 			match_suffix = li;
 			/* Have to copy: buffer is overwritten */
@@ -1599,6 +1622,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		  }
 		else
 		  {
+			//首字符非'*'号，直接copy串，认为是忽略类后缀
 		    li->next = ignore_suffix;
 		    ignore_suffix = li;
 		    /* Have to copy: buffer is overwritten */
@@ -1607,21 +1631,25 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	      }
 	  }
 	
+	//打开配置目录
 	if (!(dir_stream = opendir(directory)))
 	  die(_("cannot access directory %s: %s"), directory, EC_FILE);
 	
+	//遍历配置目录中所有文件
 	while ((ent = readdir(dir_stream)))
 	  {
 	    size_t len = strlen(ent->d_name);
 	    struct stat buf;
 	    
 	    /* ignore emacs backups and dotfiles */
+	    //忽略略掉以'~','#'结尾的文件，忽略掉以'#','.'开头的文件
 	    if (len == 0 ||
 		ent->d_name[len - 1] == '~' ||
 		(ent->d_name[0] == '#' && ent->d_name[len - 1] == '#') ||
 		ent->d_name[0] == '.')
 	      continue;
 
+	    //如果配置了匹配后缀，则遍历匹配后缀，检查文件是否可匹配
 	    if (match_suffix)
 	      {
 		for (li = match_suffix; li; li = li->next)
@@ -1630,12 +1658,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		    size_t ls = strlen(li->suffix);
 		    if (len > ls &&
 			strcmp(li->suffix, &ent->d_name[len - ls]) == 0)
-		      break;
+		      break;//后缀匹配成功，继续检查是否后缀被忽略
 		  }
 		if (!li)
-		  continue;
+		  continue;//后缀匹配不成功，尝试下一个文件
 	      }
 	    
+	    //如果配置有忽略后缀，则匹配
 	    for (li = ignore_suffix; li; li = li->next)
 	      {
 		/* check for proscribed suffices */
@@ -1645,24 +1674,28 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		  break;
 	      }
 	    if (li)
-	      continue;
+	      continue;//后缀忽略匹配成功，尝试下一个文件
 	    
+	    //构造配置文件路径
 	    path = opt_malloc(strlen(directory) + len + 2);
 	    strcpy(path, directory);
 	    strcat(path, "/");
 	    strcat(path, ent->d_name);
 
 	    /* files must be readable */
+	    //确保配置文件可读
 	    if (stat(path, &buf) == -1)
 	      die(_("cannot access %s: %s"), path, EC_FILE);
 	    
 	    /* only reg files allowed. */
+	    //确保配置文件为普通文件
 	    if (S_ISREG(buf.st_mode))
 	      one_file(path, 0);
 	    
 	    free(path);
 	  }
      
+	//中间资源释放
 	closedir(dir_stream);
 	free(directory);
 	for(; ignore_suffix; ignore_suffix = li)
@@ -2285,6 +2318,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       break;
 #endif
       
+    //配置用户指定的接口
     case 'i':  /* --interface */
       do {
 	struct iname *new = opt_malloc(sizeof(struct iname));
@@ -2362,6 +2396,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	struct iname *new = opt_malloc(sizeof(struct iname));
 	comma = split(arg);
 	unhide_metas(arg);
+	//解析用户配置的监听地址
 	if (arg && (inet_pton(AF_INET, arg, &new->addr.in.sin_addr) > 0))
 	  {
 	    new->addr.sa.sa_family = AF_INET;
@@ -2753,7 +2788,8 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
         ret_err(gen_err);
       break;
 #endif
-	      
+
+    //指定桥接口及桥内的口，所有桥内的口均会认为是桥接口收到dhcp请求
     case LOPT_BRIDGE:   /* --bridge-interface */
       {
 	struct dhcp_bridge *new;
@@ -2763,8 +2799,9 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 
 	for (new = daemon->bridges; new; new = new->next)
 	  if (strcmp(new->iface, arg) == 0)
-	    break;
+	    break;//如果配置的名称已存在，则跳出
 
+	//新建新的bridges名称
 	if (!new)
 	  {
 	     new = opt_malloc(sizeof(struct dhcp_bridge));
@@ -2774,6 +2811,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	     daemon->bridges = new;
 	  }
 	
+	//解析桥上的接口，做为桥接口的别名
 	do {
 	  arg = comma;
 	  comma = split(arg);
@@ -2790,6 +2828,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
       }
 
 #ifdef HAVE_DHCP
+      //配置dhcp-range
     case 'F':  /* --dhcp-range */
       {
 	int k, leasepos = 2;
@@ -2797,18 +2836,21 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	struct dhcp_context *new = opt_malloc(sizeof(struct dhcp_context));
 	
 	memset (new, 0, sizeof(*new));
-	new->lease_time = DEFLEASE;
+	new->lease_time = DEFLEASE;/*默认租约时间为3600秒*/
 	
 	while(1)
 	  {
-	    for (cp = arg; *cp; cp++)
+		//第一部分必须为ipv4,ipv6地址
+	    for (cp = arg/*arg为参数*/; *cp; cp++)
 	      if (!(*cp == ' ' || *cp == '.' || *cp == ':' || 
 		    (*cp >= 'a' && *cp <= 'f') || (*cp >= 'A' && *cp <= 'F') ||
 		    (*cp >='0' && *cp <= '9')))
 		break;
 	    
+	    //如果遇到的不是‘，’号，且字符串中包含逗号则进入（限制要求必须有两个部分且用‘,‘号分隔）
 	    if (*cp != ',' && (comma = split(arg)))
 	      {
+	    	//处理tag情况
 		if (is_tag_prefix(arg))
 		  {
 		    struct dhcp_netid *tt = opt_malloc(sizeof (struct dhcp_netid));
@@ -2831,23 +2873,30 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	      }
 	    else
 	      {
+	    //不包含逗号的情况或者仅包含１个逗号情况
 		a[0] = arg;
 		break;
 	      }
 	  }
 	
+	//尝试着分隔各字段
 	for (k = 1; k < 8; k++)
 	  if (!(a[k] = split(a[k-1])))
 	    break;
 	
+	//dhcp-rang至少由两部分组成
 	if (k < 2)
 	  ret_err(_("bad dhcp-range"));
 	
+	//尝试第一部分是否为ipv4地址（最多４部分）
 	if (inet_pton(AF_INET, a[0], &new->start))
 	  {
+		//挂接dhcp range
 	    new->next = daemon->dhcp;
 	    daemon->dhcp = new;
+
 	    new->end = new->start;
+	    //第二个段，可以为'static','proxy',end的ip地址
 	    if (strcmp(a[1], "static") == 0)
 	      new->flags |= CONTEXT_STATIC;
 	    else if (strcmp(a[1], "proxy") == 0)
@@ -2855,6 +2904,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	    else if (!inet_pton(AF_INET, a[1], &new->end))
 	      ret_err(_("bad dhcp-range"));
 	    
+	    //空许start,end两个反着写
 	    if (ntohl(new->start.s_addr) > ntohl(new->end.s_addr))
 	      {
 		struct in_addr tmp = new->start;
@@ -2862,15 +2912,17 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		new->end = tmp;
 	      }
 	    
+	    //如果有第三段，且第三段含'.'，则认为是netmask
 	    if (k >= 3 && strchr(a[2], '.') &&  
 		(inet_pton(AF_INET, a[2], &new->netmask) > 0))
 	      {
 		new->flags |= CONTEXT_NETMASK;
 		leasepos = 3;
+		//校验start,end必须在一个网段里
 		if (!is_same_net(new->start, new->end, new->netmask))
 		  ret_err(_("inconsistent DHCP range"));
 		
-	    
+	    //如果有第４段，且第４段含'.',则认为配置了广播地址
 		if (k >= 4 && strchr(a[3], '.') &&  
 		    (inet_pton(AF_INET, a[3], &new->broadcast) > 0))
 		  {
@@ -2880,6 +2932,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	      }
 	  }
 #ifdef HAVE_DHCP6
+	//尝试第一部分是否为ipv6地址
 	else if (inet_pton(AF_INET6, a[0], &new->start6))
 	  {
 	    new->flags |= CONTEXT_V6; 
@@ -2927,6 +2980,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		  }
 	      }
 	    
+	    //只容许分配６４前缀的地址
 	    if (new->prefix != 64)
 	      {
 		if (new->flags & CONTEXT_RA)
@@ -2935,6 +2989,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 		  ret_err(_("prefix length must be exactly 64 for subnet constructors"));
 	      }
 
+	    //跑不到的代码？
 	    if (new->prefix < 64)
 	      ret_err(_("prefix length must be at least 64"));
 	    
@@ -2962,10 +3017,13 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	  }
 #endif
 	else
+	  //第一部分必须为ipv4,ipv6地址
 	  ret_err(_("bad dhcp-range"));
 	
+	//检查是否包含租约的配置
 	if (leasepos < k)
 	  {
+		//租约必须为最后一个配置
 	    if (leasepos != k-1)
 	      ret_err(_("bad dhcp-range"));
 	    
@@ -2975,6 +3033,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	      new->flags |= CONTEXT_DEPRECATE;
 	    else
 	      {
+	    	//租约具体时间解析
 		int fac = 1;
 		if (strlen(a[leasepos]) > 0)
 		  {
@@ -3278,7 +3337,7 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	break;
       }
 
-      
+    //配置dhcp-option
     case 'O':           /* --dhcp-option */
     case LOPT_FORCE:    /* --dhcp-option-force */
     case LOPT_OPTS:
@@ -4273,11 +4332,13 @@ err:
   return 1;
 }
 
-static void read_file(char *file, FILE *f, int hard_opt)	
+//仅用于校验文件是否合法
+static void read_file(char *file/*f对应的文件名*/, FILE *f/*文件流*/, int hard_opt)
 {
   volatile int lineno = 0;
   char *buff = daemon->namebuff;
   
+  //遍历读取配置文件
   while (fgets(buff, MAXDNAME, f))
     {
       int white, i;
@@ -4294,19 +4355,22 @@ static void read_file(char *file, FILE *f, int hard_opt)
 	}
       
       arg = NULL;
-      lineno++;
+      lineno++;//增加文件行号
       errmess = NULL;
       
       /* Implement quotes, inside quotes we allow \\ \" \n and \t 
 	 metacharacters get hidden also strip comments */
       for (white = 1, p = buff; *p; p++)
 	{
+      //遇到字符串开始符
 	  if (*p == '"')
 	    {
 	      memmove(p, p+1, strlen(p+1)+1);
 
+	      //查找字符串终止符，（顺手完成转义处理）
 	      for(; *p && *p != '"'; p++)
 		{
+	      //顺手处理\t,\n,\e,\b,\r,\\字符处理
 		  if (*p == '\\' && strchr("\"tnebr\\", p[1]))
 		    {
 		      if (p[1] == 't')
@@ -4324,15 +4388,18 @@ static void read_file(char *file, FILE *f, int hard_opt)
 		  *p = hide_meta(*p);
 		}
 
+	      //未遇到字符串结束符时，先遇到'\0',报错
 	      if (*p == 0) 
 		{
 		  errmess = _("missing \"");
 		  goto oops; 
 		}
 
+	      //遇到字符串结束符，将其移除
 	      memmove(p, p+1, strlen(p+1)+1);
 	    }
 
+	  //遇到space char,统一替换为空格
 	  if (isspace(*p))
 	    {
 	      *p = ' ';
@@ -4340,11 +4407,13 @@ static void read_file(char *file, FILE *f, int hard_opt)
 	    }
 	  else 
 	    {
+		  //有空格分格的，行尾有注释情况
 	      if (white && *p == '#')
 		{ 
 		  *p = 0;
 		  break;
 		}
+	      //如果#前没有空格，则不认为是行尾注释情况
 	      white = 0;
 	    } 
 	}
@@ -4356,17 +4425,19 @@ static void read_file(char *file, FILE *f, int hard_opt)
       /* strip trailing spaces */
       for (len = strlen(start); (len != 0) && (start[len-1] == ' '); len--);
       
+      //空白行忽略
       if (len == 0)
 	continue; 
       else
-	start[len] = 0;
+	start[len] = 0;//移除尾空白符
       
       if (option != 0)
 	arg = start;
       else if ((p=strchr(start, '=')))
 	{
 	  /* allow spaces around "=" */
-	  for (arg = p+1; *arg == ' '; arg++);
+	  for (arg = p+1; *arg == ' '; arg++);//跳过参数前的空格
+	  //移除‘＝’行前面的空格
 	  for (; p >= start && (*p == ' ' || *p == '='); p--)
 	    *p = 0;
 	}
@@ -4375,6 +4446,7 @@ static void read_file(char *file, FILE *f, int hard_opt)
 
       if (option == 0)
 	{
+      //start指向的是key,例如'dhcp-range'，这里通过查询opts将key直接换算成命令行输入的参数
 	  for (option = 0, i = 0; opts[i].name; i++) 
 	    if (strcmp(opts[i].name, start) == 0)
 	      {
@@ -4382,12 +4454,16 @@ static void read_file(char *file, FILE *f, int hard_opt)
 		break;
 	      }
 	  
+	  //如果无option,则报错
 	  if (!option)
 	    errmess = _("bad option");
+	  //如果有value,但选项指明没有，则报错
 	  else if (opts[i].has_arg == 0 && arg)
 	    errmess = _("extraneous parameter");
+	  //选项指明有参数，但无value,报错
 	  else if (opts[i].has_arg == 1 && !arg)
 	    errmess = _("missing parameter");
+	  //?????
 	  else if (hard_opt == LOPT_REV_SERV && option != 'S' && option != LOPT_REV_SERV)
 	    errmess = _("illegal option");
 	}
@@ -4396,7 +4472,9 @@ static void read_file(char *file, FILE *f, int hard_opt)
       if (errmess)
 	strcpy(daemon->namebuff, errmess);
 	  
-      if (errmess || !one_opt(option, arg, daemon->namebuff, _("error"), 0, hard_opt == LOPT_REV_SERV))
+      //有错误信息，或者处理选项失败直接退出
+      //通过one_opt处理选项
+      if (errmess || !one_opt(option/*选项值*/, arg/*选项参数*/, daemon->namebuff, _("error"), 0/*选项不来源于命令行*/, hard_opt == LOPT_REV_SERV))
 	{
 	  sprintf(daemon->namebuff + strlen(daemon->namebuff), _(" at line %d of %s"), lineno, file);
 	  if (hard_opt != 0)
@@ -4424,7 +4502,8 @@ int option_read_dynfile(char *file, int flags)
 }
 #endif
 
-static int one_file(char *file, int hard_opt)
+//配置文件处理
+static int one_file(char *file/*配置文件路径*/, int hard_opt)
 {
   FILE *f;
   int nofile_ok = 0;
@@ -4442,6 +4521,7 @@ static int one_file(char *file, int hard_opt)
       nofile_ok = 1;
     }
 
+  //如果文件名称为'-',则理解自标准输入读取
   if (hard_opt == 0 && strcmp(file, "-") == 0)
     {
       if (read_stdin == 1)
@@ -4459,10 +4539,12 @@ static int one_file(char *file, int hard_opt)
 	{
 	  struct fileread *r;
 	  
+	  //防止同一文件重复读取
 	  for (r = filesread; r; r = r->next)
 	    if (r->dev == statbuf.st_dev && r->ino == statbuf.st_ino)
 	      return 1;
 	  
+	  //注册要读取的文件，构造防文件重复读取数据
 	  r = safe_malloc(sizeof(struct fileread));
 	  r->next = filesread;
 	  filesread = r;
@@ -4470,6 +4552,7 @@ static int one_file(char *file, int hard_opt)
 	  r->ino = statbuf.st_ino;
 	}
       
+      //打开文件
       if (!(f = fopen(file, "r")))
 	{   
 	  if (errno == ENOENT && nofile_ok)
@@ -4488,6 +4571,7 @@ static int one_file(char *file, int hard_opt)
 	} 
     }
   
+  //需要读取的配置文件已准备好，开始读取
   read_file(file, f, hard_opt);
   return 1;
 }
@@ -4726,7 +4810,7 @@ void read_opts(int argc, char **argv, char *compile_opts)
   char *argbuf = opt_malloc(argbuf_size);
   char *buff = opt_malloc(MAXDNAME);
   int option, conffile_opt = '7', testmode = 0;
-  char *arg, *conffile = CONFFILE;
+  char *arg, *conffile = CONFFILE;/*记录配置文件路径*/
       
   opterr = 0;
 
@@ -4811,6 +4895,7 @@ void read_opts(int argc, char **argv, char *compile_opts)
 	testmode = 1;
       else if (option == 'w')
 	{
+      //显示help message信息
 #ifdef HAVE_DHCP
 	  if (argc == 3 && strcmp(argv[2], "dhcp") == 0)
 	    display_opts();
@@ -4826,6 +4911,7 @@ void read_opts(int argc, char **argv, char *compile_opts)
 	}
       else if (option == 'v')
 	{
+      //显示版本
 	  printf(_("Dnsmasq version %s  %s\n"), VERSION, COPYRIGHT);
 	  printf(_("Compile time options: %s\n\n"), compile_opts); 
 	  printf(_("This software comes with ABSOLUTELY NO WARRANTY.\n"));
@@ -4835,11 +4921,13 @@ void read_opts(int argc, char **argv, char *compile_opts)
         }
       else if (option == 'C')
 	{
+      //指定配置文件
 	  conffile_opt = 0; /* file must exist */
 	  conffile = opt_string_alloc(arg);
 	}
       else
 	{
+      //其它选项处理
 #ifdef HAVE_GETOPT_LONG
 	  if (!one_opt(option, arg, daemon->namebuff, _("try --help"), 1, 0))
 #else 

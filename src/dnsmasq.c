@@ -69,6 +69,7 @@ int main (int argc, char **argv)
   textdomain("dnsmasq");
 #endif
 
+  //注册以下信号处理函数为sig_handler
   sigact.sa_handler = sig_handler;
   sigact.sa_flags = 0;
   sigemptyset(&sigact.sa_mask);
@@ -81,6 +82,7 @@ int main (int argc, char **argv)
   sigaction(SIGINT, &sigact, NULL);
   
   /* ignore SIGPIPE */
+  //忽略sigpipe事件
   sigact.sa_handler = SIG_IGN;
   sigaction(SIGPIPE, &sigact, NULL);
 
@@ -88,6 +90,7 @@ int main (int argc, char **argv)
  
   rand_init(); /* Must precede read_opts() */
   
+  //选项解析
   read_opts(argc, argv, compile_opts);
  
   if (daemon->edns_pktsz < PACKETSZ)
@@ -929,6 +932,7 @@ int main (int argc, char **argv)
   if (daemon->port != 0)
     check_servers();
   
+  /*启动完成，设置pid*/
   pid = getpid();
   
 #ifdef HAVE_INOTIFY
@@ -1144,7 +1148,7 @@ static void sig_handler(int sig)
       /* ignore anything other than TERM during startup
 	 and in helper proc. (helper ignore TERM too) */
       if (sig == SIGTERM || sig == SIGINT)
-	exit(EC_MISC);
+	exit(EC_MISC);//启动过程中，遇到这两种信号直接退出
     }
   else if (pid != getpid())
     {
@@ -1181,6 +1185,7 @@ static void sig_handler(int sig)
       else
 	return;
 
+      //发送事件交给事件框架统一处理
       send_event(pipewrite, event, 0, NULL); 
       errno = errsave;
     }
