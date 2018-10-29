@@ -567,7 +567,7 @@ struct irec {
 };
 
 struct listener {
-  int fd, tcpfd, tftpfd, family;
+  int fd, tcpfd, tftpfd/*tftp对应的fd*/, family;
   struct irec *iface; /* only sometimes valid for non-wildcard */
   struct listener *next;
 };
@@ -1023,7 +1023,7 @@ extern struct daemon {
   char *runfile; 
   char *lease_change_command;
   struct iname *if_names/*配置指定的接口名称*/, *if_addrs/*用户配置的监听指定ip地址*/,
-  *if_except/*配置反向接口名称*/, *dhcp_except/*指定接口禁止dhcp报文*/, *auth_peers, *tftp_interfaces;
+  *if_except/*配置反向接口名称*/, *dhcp_except/*指定接口禁止dhcp报文*/, *auth_peers, *tftp_interfaces/*tftp的容许接口*/;
   struct bogus_addr *bogus_addr, *ignore_addr;
   struct server *servers;
   struct ipsets *ipsets;

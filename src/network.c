@@ -905,6 +905,7 @@ static struct listener *create_listeners(union mysockaddr *addr, int do_tftp, in
       if (addr->sa.sa_family == AF_INET)
 	{
 	  /* port must be restored to DNS port for TCP code */
+      //构造tftp对应的fd
 	  short save = addr->in.sin_port;
 	  addr->in.sin_port = htons(TFTP_PORT);
 	  tftpfd = make_sock(addr, SOCK_DGRAM, dienow);

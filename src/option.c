@@ -3378,23 +3378,27 @@ static int one_opt(int option, char *arg, char *errstr, char *gen_err, int comma
 	struct dhcp_netid *id = NULL;
 	while (is_tag_prefix(arg))
 	  {
+		//处理参数有tag情况
 	    struct dhcp_netid *newid = opt_malloc(sizeof(struct dhcp_netid));
 	    newid->next = id;
 	    id = newid;
 	    comma = split(arg);
-	    newid->net = opt_string_alloc(arg+4);
+	    newid->net = opt_string_alloc(arg+4);//设置tag名称
 	    arg = comma;
+	    //继续分析，支持拥有多个tag
 	  };
 	
 	if (!arg)
 	  ret_err(gen_err);
 	else 
 	  {
+		//参数不包含tag的情况
+		//dhcp-file,dhcp_sname,dhcp_next_server,
 	    char *dhcp_file, *dhcp_sname = NULL, *tftp_sname = NULL;
 	    struct in_addr dhcp_next_server;
 	    struct dhcp_boot *new;
 	    comma = split(arg);
-	    dhcp_file = opt_string_alloc(arg);
+	    dhcp_file = opt_string_alloc(arg);//dhcp文件
 	    dhcp_next_server.s_addr = 0;
 	    if (comma)
 	      {

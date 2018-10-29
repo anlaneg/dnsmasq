@@ -965,6 +965,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
 		      else if (boot->tftp_sname) 
 			mess->siaddr = a_record_from_hosts(boot->tftp_sname, now);
 		      
+		      //如果配置了boot->file,则设置启动文件名称
 		      if (boot->file)
 			safe_strncpy((char *)mess->file, boot->file, sizeof(mess->file));
 		    }

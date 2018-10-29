@@ -39,6 +39,7 @@ static void sanitise(char *buf);
 #define ERR_FULL   3
 #define ERR_ILL    4
 
+//tftp请求处理
 void tftp_request(struct listener *listen, time_t now)
 {
   ssize_t len;
@@ -94,6 +95,7 @@ void tftp_request(struct listener *listen, time_t now)
   /* we overwrote the buffer... */
   daemon->srv_save = NULL;
 
+  //收取请求
   if ((len = recvmsg(listen->tftpfd, &msg, 0)) < 2)
     return;
 
@@ -192,6 +194,7 @@ void tftp_request(struct listener *listen, time_t now)
         }
 #endif
       
+      //确定报文来自哪个接口
       if (!indextoname(listen->tftpfd, if_index, namebuff))
 	return;
 
@@ -207,6 +210,7 @@ void tftp_request(struct listener *listen, time_t now)
       if (daemon->tftp_interfaces)
 	{
 	  /* dedicated tftp interface list */
+    	  //检查报文是否来自于tftp的容许接口
 	  for (tmp = daemon->tftp_interfaces; tmp; tmp = tmp->next)
 	    if (tmp->name && wildcard_match(tmp->name, name))
 	      break;
@@ -419,6 +423,7 @@ void tftp_request(struct listener *listen, time_t now)
 		  size_t oldlen = strlen(daemon->namebuff);
 		  struct stat statbuf;
 
+		  //添加mac地址目录
 		  snprintf(daemon->namebuff + oldlen, (MAXDNAME-1) - oldlen, "%.2x-%.2x-%.2x-%.2x-%.2x-%.2x/",
 			   macaddr[0], macaddr[1], macaddr[2], macaddr[3], macaddr[4], macaddr[5]);
 		  
@@ -444,6 +449,7 @@ void tftp_request(struct listener *listen, time_t now)
       /* check permissions and open file */
       if ((transfer->file = check_tftp_fileperm(&len, prefix)))
 	{
+      //读取报文内容，并将其写入packet
 	  if ((len = get_block(packet, transfer)) == -1)
 	    len = tftp_err_oops(packet, daemon->namebuff);
 	  else
@@ -451,6 +457,7 @@ void tftp_request(struct listener *listen, time_t now)
 	}
     }
   
+  //将报文内容发送给sockfd
   while (sendto(transfer->sockfd, packet, len, 0, 
 		(struct sockaddr *)&peer, sa_len(&peer)) == -1 && errno == EINTR);
   
@@ -474,8 +481,13 @@ static struct tftp_file *check_tftp_fileperm(ssize_t *len, char *prefix)
 
   /* trick to ban moving out of the subtree */
   if (prefix && strstr(namebuff, "/../"))
-    goto perm;
+    goto perm;//不容许目录穿透
   
+  //打开指定的文件
+  //XXX 可以在此处添加hook点，通过注册脚本检查是否需要容许向用户发送此文件
+  //通过此功能，可实现在tftp情况，动态发送pxelinux.cfg/default文件，
+  //从而解决需要ipxe端通过http协议来发送请求来解决pxe自动化安装会进入死循环的状态
+  //采用对端的mac地址做为参数传入
   if ((fd = open(namebuff, O_RDONLY)) == -1)
     {
       if (errno == ENOENT)
@@ -763,6 +775,7 @@ static ssize_t get_block(char *packet, struct tftp_transfer *transfer)
       mess->op = htons(OP_DATA);
       mess->block = htons((unsigned short)(transfer->block));
       
+      //读取fd中内容，并传递给mess->data
       if (lseek(transfer->file->fd, transfer->offset, SEEK_SET) == (off_t)-1 ||
 	  !read_write(transfer->file->fd, mess->data, size, 1))
 	return -1;

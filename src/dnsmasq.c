@@ -1657,7 +1657,8 @@ static void check_dns_listeners(time_t now)
       if (listener->fd != -1 && poll_check(listener->fd, POLLIN))
 	receive_query(listener, now); 
       
-#ifdef HAVE_TFTP     
+#ifdef HAVE_TFTP
+      //如果有tftpfd，且其上有可读事件，则处理tftp请求
       if (listener->tftpfd != -1 && poll_check(listener->tftpfd, POLLIN))
 	tftp_request(listener, now);
 #endif
