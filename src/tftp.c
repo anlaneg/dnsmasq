@@ -331,7 +331,8 @@ void tftp_request(struct listener *listen, time_t now)
   p = packet + 2;
   end = packet + len;
 
-  if (ntohs(*((unsigned short *)packet)) != OP_RRQ ||
+  //目前tftp仅支持读请求
+  if (ntohs(*((unsigned short *)packet)) != OP_RRQ/*当前仅支持读请求*/ ||
       !(filename = next(&p, end)) ||
       !(mode = next(&p, end)) ||
       (strcasecmp(mode, "octet") != 0 && strcasecmp(mode, "netascii") != 0))
@@ -486,6 +487,7 @@ static struct tftp_file *check_tftp_fileperm(ssize_t *len, char *prefix)
   //打开指定的文件
   //XXX 可以在此处添加hook点，通过注册脚本检查是否需要容许向用户发送此文件
   //通过此功能，可实现在tftp情况，动态发送pxelinux.cfg/default文件，
+  //通过此功能，也实现在dnsmasq当前不支持上传数据的情况下，可实现简单数据上传
   //从而解决需要ipxe端通过http协议来发送请求来解决pxe自动化安装会进入死循环的状态
   //采用对端的mac地址做为参数传入
   if ((fd = open(namebuff, O_RDONLY)) == -1)
