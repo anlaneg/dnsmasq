@@ -934,6 +934,10 @@ int main (int argc, char **argv)
   
   /*启动完成，设置pid*/
   pid = getpid();
+
+  daemon->pipe_to_parent = -1;
+  for (i = 0; i < MAX_PROCS; i++)
+    daemon->tcp_pipes[i] = -1;
   
 #ifdef HAVE_INOTIFY
   /* Using inotify, have to select a resolv file at startup */
@@ -1620,7 +1624,7 @@ static int set_dns_listeners(time_t now)
 	 we don't need to explicitly arrange to wake up here */
       if  (listener->tcpfd != -1)
 	for (i = 0; i < MAX_PROCS; i++)
-	  if (daemon->tcp_pids[i] == 0)
+	  if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
 	    {
 	      poll_listen(listener->tcpfd, POLLIN);
 	      break;
@@ -1633,6 +1637,13 @@ static int set_dns_listeners(time_t now)
 
     }
   
+#ifndef NO_FORK
+  if (!option_bool(OPT_DEBUG))
+    for (i = 0; i < MAX_PROCS; i++)
+      if (daemon->tcp_pipes[i] != -1)
+	poll_listen(daemon->tcp_pipes[i], POLLIN);
+#endif
+  
   return wait;
 }
 
@@ -1641,7 +1652,10 @@ static void check_dns_listeners(time_t now)
   struct serverfd *serverfdp;
   struct listener *listener;
   int i;
-
+#ifndef NO_FORK
+  int pipefd[2];
+#endif
+  
   for (serverfdp = daemon->sfds; serverfdp; serverfdp = serverfdp->next)
     if (poll_check(serverfdp->fd, POLLIN))
       reply_query(serverfdp->fd, serverfdp->source_addr.sa.sa_family, now);
@@ -1651,7 +1665,26 @@ static void check_dns_listeners(time_t now)
       if (daemon->randomsocks[i].refcount != 0 && 
 	  poll_check(daemon->randomsocks[i].fd, POLLIN))
 	reply_query(daemon->randomsocks[i].fd, daemon->randomsocks[i].family, now);
-  
+
+#ifndef NO_FORK
+  /* Races. The child process can die before we read all of the data from the
+     pipe, or vice versa. Therefore send tcp_pids to zero when we wait() the 
+     process, and tcp_pipes to -1 and close the FD when we read the last
+     of the data - indicated by cache_recv_insert returning zero.
+     The order of these events is indeterminate, and both are needed
+     to free the process slot. Once the child process has gone, poll()
+     returns POLLHUP, not POLLIN, so have to check for both here. */
+  if (!option_bool(OPT_DEBUG))
+    for (i = 0; i < MAX_PROCS; i++)
+      if (daemon->tcp_pipes[i] != -1 &&
+	  poll_check(daemon->tcp_pipes[i], POLLIN | POLLHUP) &&
+	  !cache_recv_insert(now, daemon->tcp_pipes[i]))
+	{
+	  close(daemon->tcp_pipes[i]);
+	  daemon->tcp_pipes[i] = -1;	
+	}
+#endif
+	
   for (listener = daemon->listeners; listener; listener = listener->next)
     {
       if (listener->fd != -1 && poll_check(listener->fd, POLLIN))
@@ -1707,11 +1740,11 @@ static void check_dns_listeners(time_t now)
 		  indextoname(listener->tcpfd, if_index, intr_name))
 		{
 		  struct all_addr addr;
-		  addr.addr.addr4 = tcp_addr.in.sin_addr;
-#ifdef HAVE_IPV6
+		  
 		  if (tcp_addr.sa.sa_family == AF_INET6)
 		    addr.addr.addr6 = tcp_addr.in6.sin6_addr;
-#endif
+		  else
+		    addr.addr.addr4 = tcp_addr.in.sin_addr;
 		  
 		  for (iface = daemon->interfaces; iface; iface = iface->next)
 		    if (iface->index == if_index)
@@ -1746,15 +1779,20 @@ static void check_dns_listeners(time_t now)
 	      while (retry_send(close(confd)));
 	    }
 #ifndef NO_FORK
-	  else if (!option_bool(OPT_DEBUG) && (p = fork()) != 0)
+	  else if (!option_bool(OPT_DEBUG) && pipe(pipefd) == 0 && (p = fork()) != 0)
 	    {
-	      if (p != -1)
+	      close(pipefd[1]); /* parent needs read pipe end. */
+	      if (p == -1)
+		close(pipefd[0]);
+	      else
 		{
 		  int i;
+
 		  for (i = 0; i < MAX_PROCS; i++)
-		    if (daemon->tcp_pids[i] == 0)
+		    if (daemon->tcp_pids[i] == 0 && daemon->tcp_pipes[i] == -1)
 		      {
 			daemon->tcp_pids[i] = p;
+			daemon->tcp_pipes[i] = pipefd[0];
 			break;
 		      }
 		}
@@ -1771,7 +1809,7 @@ static void check_dns_listeners(time_t now)
 	      int flags;
 	      struct in_addr netmask;
 	      int auth_dns;
-
+	   
 	      if (iface)
 		{
 		  netmask = iface->netmask;
@@ -1787,7 +1825,11 @@ static void check_dns_listeners(time_t now)
 	      /* Arrange for SIGALRM after CHILD_LIFETIME seconds to
 		 terminate the process. */
 	      if (!option_bool(OPT_DEBUG))
-		alarm(CHILD_LIFETIME);
+		{
+		  alarm(CHILD_LIFETIME);
+		  close(pipefd[0]); /* close read end in child. */
+		  daemon->pipe_to_parent = pipefd[1];
+		}
 #endif
 
 	      /* start with no upstream connections. */
