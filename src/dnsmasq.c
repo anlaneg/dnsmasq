@@ -488,7 +488,6 @@ int main (int argc, char **argv)
       if (chdir("/") != 0)
 	die(_("cannot chdir to filesystem root: %s"), NULL, EC_MISC); 
 
-#ifndef NO_FORK      
       if (!option_bool(OPT_NO_FORK))
 	{
 	  pid_t pid;
@@ -528,7 +527,6 @@ int main (int argc, char **argv)
 	  if (pid != 0)
 	    _exit(0);
 	}
-#endif
             
       /* write pidfile _after_ forking ! */
       if (daemon->runfile)
@@ -1637,12 +1635,10 @@ static int set_dns_listeners(time_t now)
 
     }
   
-#ifndef NO_FORK
   if (!option_bool(OPT_DEBUG))
     for (i = 0; i < MAX_PROCS; i++)
       if (daemon->tcp_pipes[i] != -1)
 	poll_listen(daemon->tcp_pipes[i], POLLIN);
-#endif
   
   return wait;
 }
@@ -1652,9 +1648,7 @@ static void check_dns_listeners(time_t now)
   struct serverfd *serverfdp;
   struct listener *listener;
   int i;
-#ifndef NO_FORK
   int pipefd[2];
-#endif
   
   for (serverfdp = daemon->sfds; serverfdp; serverfdp = serverfdp->next)
     if (poll_check(serverfdp->fd, POLLIN))
@@ -1666,7 +1660,6 @@ static void check_dns_listeners(time_t now)
 	  poll_check(daemon->randomsocks[i].fd, POLLIN))
 	reply_query(daemon->randomsocks[i].fd, daemon->randomsocks[i].family, now);
 
-#ifndef NO_FORK
   /* Races. The child process can die before we read all of the data from the
      pipe, or vice versa. Therefore send tcp_pids to zero when we wait() the 
      process, and tcp_pipes to -1 and close the FD when we read the last
@@ -1683,7 +1676,6 @@ static void check_dns_listeners(time_t now)
 	  close(daemon->tcp_pipes[i]);
 	  daemon->tcp_pipes[i] = -1;	
 	}
-#endif
 	
   for (listener = daemon->listeners; listener; listener = listener->next)
     {
@@ -1778,7 +1770,6 @@ static void check_dns_listeners(time_t now)
 	      shutdown(confd, SHUT_RDWR);
 	      while (retry_send(close(confd)));
 	    }
-#ifndef NO_FORK
 	  else if (!option_bool(OPT_DEBUG) && pipe(pipefd) == 0 && (p = fork()) != 0)
 	    {
 	      close(pipefd[1]); /* parent needs read pipe end. */
@@ -1801,7 +1792,6 @@ static void check_dns_listeners(time_t now)
 	      /* The child can use up to TCP_MAX_QUERIES ids, so skip that many. */
 	      daemon->log_id += TCP_MAX_QUERIES;
 	    }
-#endif
 	  else
 	    {
 	      unsigned char *buff;
@@ -1821,7 +1811,6 @@ static void check_dns_listeners(time_t now)
 		  auth_dns = 0;
 		}
 
-#ifndef NO_FORK
 	      /* Arrange for SIGALRM after CHILD_LIFETIME seconds to
 		 terminate the process. */
 	      if (!option_bool(OPT_DEBUG))
@@ -1830,7 +1819,6 @@ static void check_dns_listeners(time_t now)
 		  close(pipefd[0]); /* close read end in child. */
 		  daemon->pipe_to_parent = pipefd[1];
 		}
-#endif
 
 	      /* start with no upstream connections. */
 	      for (s = daemon->servers; s; s = s->next)
@@ -1856,13 +1844,11 @@ static void check_dns_listeners(time_t now)
 		    shutdown(s->tcpfd, SHUT_RDWR);
 		    while (retry_send(close(s->tcpfd)));
 		  }
-#ifndef NO_FORK		   
 	      if (!option_bool(OPT_DEBUG))
 		{
 		  flush_log();
 		  _exit(0);
 		}
-#endif
 	    }
 	}
     }

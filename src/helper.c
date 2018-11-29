@@ -512,6 +512,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	      close(pipeout[1]);
 	      
 	      /* Read lines sent to stdout/err by the script and pass them back to be logged */
+	      //将pipeout[0]转换为FILE
 	      if (!(fp = fdopen(pipeout[0], "r")))
 		close(pipeout[0]);
 	      else
@@ -649,6 +650,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
       p =  strrchr(daemon->lease_change_command, '/');
       if (err == 0)
 	{
+      //调用lease change command,完成处理
 	  execl(daemon->lease_change_command, 
 		p ? p+1 : daemon->lease_change_command, action_str, 
 		(is6 && data.action != ACTION_ARP) ? daemon->packet : daemon->dhcp_buff, 
