@@ -303,6 +303,7 @@ void safe_pipe(int *fd, int read_noblock)
     die(_("cannot create pipe: %s"), NULL, EC_MISC);
 }
 
+//申请一块size大小的内存，清零
 void *whine_malloc(size_t size)
 {
   void *ret = calloc(1, size);

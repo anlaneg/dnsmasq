@@ -50,6 +50,7 @@ static int filter_mac(int family, char *addrp, char *mac, size_t maclen, void *p
       if (family != arp->family || arp->status == ARP_NEW)
 	continue;
       
+      //跳过与addrp地址不同的表项
       if (family == AF_INET)
 	{
 	  if (arp->addr.addr.addr4.s_addr != ((struct in_addr *)addrp)->s_addr)

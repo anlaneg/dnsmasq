@@ -72,8 +72,9 @@ struct script_data
   char interface[IF_NAMESIZE];
 };
 
+//缓冲
 static struct script_data *buf = NULL;
-static size_t bytes_in_buf = 0, buf_size = 0;
+static size_t bytes_in_buf = 0/*buffer被使用的大小*/, buf_size = 0;//buf的大小
 
 int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 {
@@ -83,6 +84,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 
   /* create the pipe through which the main program sends us commands,
      then fork our process. */
+  //创建pipefd管道，将pipefd[1]置为非阻塞，执行fork
   if (pipe(pipefd) == -1 || !fix_fd(pipefd[1]) || (pid = fork()) == -1)
     {
       send_event(err_fd, EVENT_PIPE_ERR, errno, NULL);
@@ -91,10 +93,12 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 
   if (pid != 0)
     {
+	  //父进程直接关闭掉读端，返回写端，并返回
       close(pipefd[0]); /* close reader side */
       return pipefd[1];
     }
 
+  //子进程处理收到的action
   /* ignore SIGTERM and SIGINT, so that we can clean up when the main process gets hit
      and SIGALRM so that we can use sleep() */
   sigact.sa_handler = SIG_IGN;
@@ -107,6 +111,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
   if (!option_bool(OPT_DEBUG) && uid != 0)
     {
       gid_t dummy;
+      //切换group id,user id 失败，则知会并退出
       if (setgroups(0, &dummy) == -1 || 
 	  setgid(gid) == -1 || 
 	  setuid(uid) == -1)
@@ -129,6 +134,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
      Don't close err_fd, in case the lua-init fails.
      Note that we have to do this before lua init
      so we don't close any lua fds. */
+  //关闭子进程其它无用fd
   for (max_fd--; max_fd >= 0; max_fd--)
     if (max_fd != STDOUT_FILENO && max_fd != STDERR_FILENO && 
 	max_fd != STDIN_FILENO && max_fd != pipefd[0] && 
@@ -192,7 +198,8 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 
       free(alloc_buff);
       
-      /* we read zero bytes when pipe closed: this is our signal to exit */ 
+      /* we read zero bytes when pipe closed: this is our signal to exit */
+      //读取父进程发送来的消息
       if (!read_write(pipefd[0], (unsigned char *)&data, sizeof(data), 1))
 	{
 #ifdef HAVE_LUASCRIPT
@@ -208,6 +215,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
  
       is6 = !!(data.flags & (LEASE_TA | LEASE_NA));
       
+      //解析action_str
       if (data.action == ACTION_DEL)
 	action_str = "del";
       else if (data.action == ACTION_ADD)
@@ -231,13 +239,15 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	  data.action = ACTION_ARP;
 	}
        else 
-	continue;
+	continue;//跳过不认识的action
 
       	
       /* stringify MAC into dhcp_buff */
       p = daemon->dhcp_buff;
       if (data.hwaddr_type != ARPHRD_ETHER || data.hwaddr_len == 0) 
-	p += sprintf(p, "%.2x-", data.hwaddr_type);
+	p += sprintf(p, "%.2x-", data.hwaddr_type);//构造硬件类型
+
+      //构造硬件地址
       for (i = 0; (i < data.hwaddr_len) && (i < DHCP_CHADDR_MAX); i++)
 	{
 	  p += sprintf(p, "%.2x", data.hwaddr[i]);
@@ -471,13 +481,16 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
 	continue;
 
       /* Pipe to capture stdout and stderr from script */
+      //构造pipeout
       if (!option_bool(OPT_DEBUG) && pipe(pipeout) == -1)
 	continue;
       
+      //如果fork失败，则等待并重试
       /* possible fork errors are all temporary resource problems */
       while ((pid = fork()) == -1 && (errno == EAGAIN || errno == ENOMEM))
 	sleep(2);
 
+      //fork失败
       if (pid == -1)
         {
 	  if (!option_bool(OPT_DEBUG))
@@ -489,6 +502,7 @@ int create_helper(int event_fd, int err_fd, uid_t uid, gid_t gid, long max_fd)
         }
       
       /* wait for child to complete */
+      //等待fork好的子进程完成脚本处理工人作
       if (pid != 0)
 	{
 	  if (!option_bool(OPT_DEBUG))
@@ -711,6 +725,7 @@ static unsigned char *grab_extradata_lua(unsigned char *buf, unsigned char *end,
 }
 #endif
 
+//扩大buf的大小（可能扩大失败）
 static void buff_alloc(size_t size)
 {
   if (size > buf_size)
@@ -831,12 +846,14 @@ void queue_tftp(off_t file_len, char *filename, union mysockaddr *peer)
 }
 #endif
 
+//将arp存入到buf中
 void queue_arp(int action, unsigned char *mac, int maclen, int family, struct all_addr *addr)
 {
   /* no script */
   if (daemon->helperfd == -1)
     return;
   
+  //扩大buf,对buf清零
   buff_alloc(sizeof(struct script_data));
   memset(buf, 0, sizeof(struct script_data));
 
@@ -850,6 +867,7 @@ void queue_arp(int action, unsigned char *mac, int maclen, int family, struct al
   
   memcpy(buf->hwaddr, mac, maclen);
   
+  //buf已占用字节数
   bytes_in_buf = sizeof(struct script_data);
 }
 
@@ -858,6 +876,7 @@ int helper_buf_empty(void)
   return bytes_in_buf == 0;
 }
 
+//将buf中的内容通知给helperfd
 void helper_write(void)
 {
   ssize_t rc;
@@ -865,14 +884,17 @@ void helper_write(void)
   if (bytes_in_buf == 0)
     return;
   
+  //向helperfd中写入buf中的内容
   if ((rc = write(daemon->helperfd, buf, bytes_in_buf)) != -1)
     {
+	  //如果没有一次性写入成功，则返回写入成功的
       if (bytes_in_buf != (size_t)rc)
 	memmove(buf, buf + rc, bytes_in_buf - rc); 
       bytes_in_buf -= rc;
     }
   else
     {
+	  //发送失败（这里应报个错）
       if (errno == EAGAIN || errno == EINTR)
 	return;
       bytes_in_buf = 0;
